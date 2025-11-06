@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>プロトタイプ14：機能安定化版</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+            min-height: 100vh;
+        }
+
+        #toolbar {
+            display: flex;
+            flex-wrap: wrap; 
+            gap: 10px;
+            padding: 15px; 
+            background-color: #fff;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            margin-bottom: 0; 
+            width: 90%; 
+            max-width: 800px; 
+            box-sizing: border-box;
+            transition: background-color 0.3s;
+            z-index: 100;
+            align-items: center;
+        }
+        
+        #toolbar.delete-zone-active { background-color: #fcebeb; }
+        #toolbar.duplicate-zone-active { background-color: #ebfcfd; }
+
+        #toolbar button, #toolbar input[type="color"], #toolbar input[type="range"], #toolbar textarea, #colorIndicator {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            white-space: nowrap;
+        }
+        
+        #colorIndicator {
+            width: 20px;
+            height: 20px;
+            padding: 0;
+            border: 2px solid #555;
+            cursor: default;
+            border-radius: 50%;
+            margin-left: -5px;
+        }
+
+        #markerText {
+            flex-grow: 1; 
+            min-width: 120px;
+            min-height: 50px; 
+            resize: vertical;
+            white-space: pre-wrap; 
+            cursor: text;
+        }
+
+        #toolbar button:hover { background-color: #f0f0f0; }
+        
+        #board-container {
+            position: relative;
+            width: 90%;
+            max-width: 800px; 
+            height: 80vh; 
+            border: 5px solid #333;
+            background-color: #aaa; /* 描画範囲外の背景色 */
+            touch-action: none;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        
+        #canvas-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: visible; 
+            background-color: transparent; 
+        }
+        
+        #canvas {
+            position: absolute;
+            background-image: none; 
+            background-color: transparent; 
+            top: 0;
+            left: 0;
+            transform-origin: 0 0; 
+            cursor: crosshair;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5); /* 描画範囲の境界線 */
+        }
+
+        .draggable-marker {
+            position: absolute;
+            min-width: 50px;
+            min-height: 25px;
+            padding: 8px 12px;
+            background-color: #3498db;
+            color: white;
+            border: 2px solid #2980b9;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 14px;
+            user-select: none;
+            cursor: move;
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.2;
+            white-space: pre-wrap;
+            transition: none;
+        }
+
+        .draggable-marker.dragging {
+            opacity: 0.7;
+            transform: scale(1.05); 
+            transition: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="toolbar">
+        <button id="drawModeButton" style="background-color: #3498db; color: white;">ペンモード</button>
+        
+        <div style="display: flex; align-items: center; gap: 5px;">
+             <span id="colorIndicator" style="background-color: #000000;" title="現在の描画色"></span>
+             <input type="color" id="colorPicker" value="#000000" title="描画色">
+        </div>
+        
+        <input type="range" id="lineWidth" min="1" max="50" value="5" title="線の太さ">
+        <button id="eraserButton">消しゴム</button>
+        <button id="clearButton">すべて消去</button>
+        
+        <hr style="width: 1px; height: 35px; background-color: #ccc; border: none; margin: 0 5px;">
+
+        <textarea id="markerText" placeholder="カンマ(,)または改行で区切って複数マーカーを一度に作成" rows="3">新しいマーカー</textarea>
+        <button id="addMarkerButton" style="background-color: #f39c12; color: white;">マーカー作成</button>
+        <span style="font-size: 12px; color: #555;">(🗑️左へドラッグで削除 / ➕右へドラッグで複製)</span>
+    </div>
+
+    <div id="board-container">
+        <div id="canvas-wrapper">
+            <canvas id="canvas" width="800" height="600"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // --- 要素の取得 ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const boardContainer = document.getElementById('board-container');
+        const toolbar = document.getElementById('toolbar');
+        const colorPicker = document.getElementById('colorPicker');
+        const lineWidthRange = document.getElementById('lineWidth');
+        const colorIndicator = document.getElementById('colorIndicator');
+        const clearButton = document.getElementById('clearButton');
+        const eraserButton = document.getElementById('eraserButton');
+        const drawModeButton = document.getElementById('drawModeButton');
+        const markerText = document.getElementById('markerText');
+        const addMarkerButton = document.getElementById('addMarkerButton');
+
+        // --- 状態管理 ---
+        let isDrawing = false; 
+        let lastX = 0; 
+        let lastY = 0; 
+        let currentColor = colorPicker.value;
+        let currentLineWidth = parseFloat(lineWidthRange.value);
+        let isEraserMode = false;
+        let isPenMode = true; 
+
+        let activeMarker = null; 
+        let markerOffsetX, markerOffsetY; 
+        let isDragging = false; 
+
+        // --- ズーム＆パン関連の状態 ---
+        let scale = 1.0;
+        let translateX = 0; 
+        let translateY = 0; 
+        let isPanning = false; 
+        let panStartX = 0; 
+        let panStartY = 0; 
+        
+        let initialPinchDistance = null; 
+        let initialPinchScale = null; 
+        
+        const scaleStep = 0.1;
+        const minScale = 0.5;
+        const maxScale = 3.0;
+        const LOGICAL_WIDTH = canvas.width;
+        const LOGICAL_HEIGHT = canvas.height;
+
+        // Canvasの初期化（白で塗りつぶし）
+        function initializeCanvasBackground() {
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+        }
+
+        // --- ズーム＆パンの適用 ---
+        function applyTransform() {
+            canvas.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+            
+            boardContainer.querySelectorAll('.draggable-marker').forEach(marker => {
+                const logicalX = parseFloat(marker.getAttribute('data-logical-x'));
+                const logicalY = parseFloat(marker.getAttribute('data-logical-y'));
+                marker.style.left = `${logicalX * scale + translateX}px`;
+                marker.style.top = `${logicalY * scale + translateY}px`;
+            });
+        }
+
+        // --- スケール更新と中心点補正 ---
+        function updateScale(newScale, clientX, clientY) {
+            newScale = Math.max(minScale, Math.min(newScale, maxScale));
+            
+            const containerRect = boardContainer.getBoundingClientRect();
+            const mouseX = clientX - containerRect.left;
+            const mouseY = clientY - containerRect.top;
+
+            const ratio = newScale / scale;
+
+            translateX = mouseX - (mouseX - translateX) * ratio;
+            translateY = mouseY - (mouseY - translateY) * ratio;
+            
+            scale = newScale;
+            applyTransform();
+        }
+        
+        // --- ズーム後の座標計算 ---
+        function getLogicalCoordinates(clientX, clientY) {
+            const containerRect = boardContainer.getBoundingClientRect();
+            const physicalX = clientX - containerRect.left;
+            const physicalY = clientY - containerRect.top;
+            
+            const logicalX = (physicalX - translateX) / scale;
+            const logicalY = (physicalY - translateY) / scale;
+            
+            return { logicalX, logicalY };
+        }
+
+
+        // 初期化処理
+        initializeCanvasBackground();
+        applyTransform();
+        colorIndicator.style.backgroundColor = currentColor; 
+
+        // --- イベントリスナー ---
+
+        // モード切り替え
+        drawModeButton.addEventListener('click', () => {
+            isPenMode = true;
+            isEraserMode = false;
+            canvas.style.cursor = 'crosshair';
+            drawModeButton.style.backgroundColor = '#3498db';
+            addMarkerButton.style.backgroundColor = '#f39c12';
+        });
+        eraserButton.addEventListener('click', () => {
+            isPenMode = true;
+            isEraserMode = true;
+            canvas.style.cursor = 'url("data:image/svg+xml;utf8,<svg xmlns=\\"http://www.w3.org/2000/svg\\" width=\\"32\\" height=\\"32\\" style=\\"background:white;border:1px solid black;border-radius:50%\\"><rect width=\\"30\\" height=\\"30\\" fill=\\"white\\" /></svg>") 16 16, auto';
+            drawModeButton.style.backgroundColor = '#2ecc71'; 
+            addMarkerButton.style.backgroundColor = '#f39c12';
+        });
+        addMarkerButton.addEventListener('click', () => {
+            isPenMode = false; 
+            canvas.style.cursor = 'default';
+            drawModeButton.style.backgroundColor = 'gray'; 
+            addMarkerButton.style.backgroundColor = '#e67e22'; 
+            
+            const markerTexts = markerText.value.split(/,|\n/).map(s => s.trim()).filter(s => s.length > 0);
+            
+            let count = 0;
+            const markerSize = 80; 
+            
+            markerTexts.forEach((text) => {
+                const xOffset = (count * markerSize) % LOGICAL_WIDTH;
+                const yOffset = Math.floor((count * markerSize) / LOGICAL_WIDTH) * markerSize;
+                
+                const logicalX = (LOGICAL_WIDTH / 2) - (markerSize / 2) + xOffset / scale;
+                const logicalY = (LOGICAL_HEIGHT / 2) - (markerSize / 2) + yOffset / scale;
+
+                addMarker(text, logicalX, logicalY);
+                count++;
+            });
+        });
+
+        // ツール設定
+        lineWidthRange.addEventListener('input', (e) => {
+            currentLineWidth = parseFloat(e.target.value);
+            isEraserMode = false;
+        });
+        colorPicker.addEventListener('input', (e) => {
+            currentColor = e.target.value;
+            colorIndicator.style.backgroundColor = currentColor; 
+            isEraserMode = false;
+        });
+        clearButton.addEventListener('click', () => {
+            if (confirm('ボード全体の内容を消去してもよろしいですか？ (マーカー含む)')) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height); 
+                initializeCanvasBackground(); 
+                boardContainer.querySelectorAll('.draggable-marker').forEach(m => m.remove());
+            }
+        });
+
+        // --- 描画ロジック ---
+
+        function draw(e) {
+            if (!isDrawing || !isPenMode) return;
+            // パン操作中/マーカードラッグ中は描画しない
+            if (isPanning || isDragging) return; 
+
+            ctx.beginPath();
+            ctx.strokeStyle = isEraserMode ? 'white' : currentColor;
+            ctx.lineWidth = currentLineWidth; 
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            const { logicalX, logicalY } = getLogicalCoordinates(e.clientX, e.clientY);
+
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(logicalX, logicalY);
+            ctx.stroke();
+
+            [lastX, lastY] = [logicalX, logicalY];
+        }
+
+        // 描画用のマウスイベント
+        canvas.addEventListener('mousedown', (e) => {
+            if (!isPenMode || e.button !== 0) return; // 左クリックのみ
+            e.preventDefault(); 
+            isDrawing = true;
+            const { logicalX, logicalY } = getLogicalCoordinates(e.clientX, e.clientY);
+            [lastX, lastY] = [logicalX, logicalY];
+            draw(e);
+        });
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', () => isDrawing = false);
+        canvas.addEventListener('mouseout', () => isDrawing = false);
+
+        // --- タッチイベント（安定化修正） ---
+
+        function getPinchDistance(touch1, touch2) {
+            const dx = touch1.clientX - touch2.clientX;
+            const dy = touch1.clientY - touch2.clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function getPinchCenter(touch1, touch2) {
+            return {
+                x: (touch1.clientX + touch2.clientX) / 2,
+                y: (touch1.clientY + touch2.clientY) / 2
+            };
+        }
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); 
+            const touches = e.touches.length;
+            
+            // マーカードラッグ中であれば、Canvasのイベントは無視
+            if (isDragging) return;
+
+            if (touches === 1) { 
+                if (isPenMode) { 
+                    isDrawing = true;
+                    isPanning = false;
+                    const { logicalX, logicalY } = getLogicalCoordinates(e.touches[0].clientX, e.touches[0].clientY);
+                    [lastX, lastY] = [logicalX, logicalY];
+                }
+            } else if (touches === 2) { 
+                // ズームは全ての操作に優先
+                isDrawing = false;
+                isPanning = false;
+                initialPinchDistance = getPinchDistance(e.touches[0], e.touches[1]);
+                initialPinchScale = scale;
+
+            } else if (touches >= 3) { // 3本指以上でパン開始
+                isDrawing = false;
+                isPanning = true;
+                panStartX = e.touches[0].clientX - translateX;
+                panStartY = e.touches[0].clientY - translateY;
+            }
+        }, { passive: false });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touches = e.touches.length;
+
+            if (isDragging) return;
+            
+            if (touches === 1 && isDrawing && isPenMode) { // 1本指で描画中
+                draw({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
+                
+            } else if (touches === 2 && initialPinchDistance !== null) { // 2本指でズーム中
+                isDrawing = false;
+                isPanning = false; 
+                const currentPinchDistance = getPinchDistance(e.touches[0], e.touches[1]);
+                const pinchFactor = currentPinchDistance / initialPinchDistance;
+                let newScale = initialPinchScale * pinchFactor;
+                
+                const pinchCenter = getPinchCenter(e.touches[0], e.touches[1]);
+                updateScale(newScale, pinchCenter.x, pinchCenter.y);
+                
+            } else if (touches >= 3 && isPanning) { // 3本指以上でパン中
+                isDrawing = false;
+                translateX = e.touches[0].clientX - panStartX;
+                translateY = e.touches[0].clientY - panStartY;
+                applyTransform();
+            }
+        }, { passive: false });
+        
+        canvas.addEventListener('touchend', (e) => {
+            // 描画、ズーム、パンの状態をリセット
+            if (isDrawing) isDrawing = false;
+            initialPinchDistance = null;
+            initialPinchScale = null;
+            // 最後の指が離れたらパンもリセット
+            if (e.touches.length === 0) isPanning = false;
+        });
+
+
+        // --- マーカー機能 ---
+
+        function addMarker(text, logicalX, logicalY) {
+            const marker = document.createElement('div');
+            marker.className = 'draggable-marker';
+            marker.textContent = text; 
+            
+            marker.setAttribute('data-logical-x', logicalX);
+            marker.setAttribute('data-logical-y', logicalY);
+            
+            marker.style.left = `${logicalX * scale + translateX}px`;
+            marker.style.top = `${logicalY * scale + translateY}px`;
+            
+            boardContainer.appendChild(marker);
+            
+            marker.addEventListener('mousedown', startDrag);
+            // 🛠️ 安定化修正: マーカーでのタッチ操作は、Canvasのイベントと分離するため個別に登録
+            marker.addEventListener('touchstart', startDragTouch, { passive: false });
+        }
+
+        // ドラッグ開始処理
+        function startDragCommon(target, clientX, clientY) {
+            if (!target.classList.contains('draggable-marker') || isDragging) return;
+            
+            // マーカー操作中は他の操作を全て無効化
+            isPenMode = false;
+            isDrawing = false;
+            isPanning = false;
+            
+            isDragging = true;
+            activeMarker = target; 
+            activeMarker.classList.add('dragging');
+
+            const rect = activeMarker.getBoundingClientRect();
+            
+            markerOffsetX = clientX - rect.left;
+            markerOffsetY = clientY - rect.top;
+
+            // グローバルなmousemove/touchmoveでマーカーを動かす
+            document.addEventListener('mousemove', dragMarker);
+            document.addEventListener('mouseup', stopDrag);
+            document.addEventListener('touchmove', dragMarkerTouch, { passive: false });
+            document.addEventListener('touchend', stopDrag);
+        }
+
+        // マーカー移動処理（マウス/タッチ共通）
+        function dragMarkerCommon(clientX, clientY) {
+            if (!isDragging || !activeMarker) return;
+            
+            const containerRect = boardContainer.getBoundingClientRect();
+            const toolbarRect = toolbar.getBoundingClientRect();
+
+            const physicalNewX = clientX - markerOffsetX - containerRect.left;
+            const physicalNewY = clientY - markerOffsetY - containerRect.top;
+            
+            const logicalNewX = (physicalNewX - translateX) / scale;
+            const logicalNewY = (physicalNewY - translateY) / scale;
+
+            // --- 削除/複製ゾーン判定 ---
+            const markerCenterY = clientY - markerOffsetY + activeMarker.offsetHeight / 2;
+            const toolbarCenter = toolbarRect.left + toolbarRect.width / 2;
+
+            toolbar.classList.remove('delete-zone-active', 'duplicate-zone-active');
+
+            if (markerCenterY > toolbarRect.top && markerCenterY < toolbarRect.bottom && clientX > toolbarRect.left && clientX < toolbarRect.right) {
+                if (clientX < toolbarCenter) { toolbar.classList.add('delete-zone-active'); } 
+                else { toolbar.classList.add('duplicate-zone-active'); }
+            }
+
+            // 範囲制限 (論理座標で制限)
+            const markerLogicalWidth = activeMarker.offsetWidth / scale;
+            const markerLogicalHeight = activeMarker.offsetHeight / scale;
+            
+            const restrictedLogicalX = Math.max(0, Math.min(logicalNewX, LOGICAL_WIDTH - markerLogicalWidth));
+            const restrictedLogicalY = Math.min(logicalNewY, LOGICAL_HEIGHT - markerLogicalHeight);
+
+            activeMarker.setAttribute('data-logical-x', restrictedLogicalX);
+            activeMarker.setAttribute('data-logical-y', restrictedLogicalY);
+
+            activeMarker.style.left = `${restrictedLogicalX * scale + translateX}px`;
+            activeMarker.style.top = `${restrictedLogicalY * scale + translateY}px`;
+        }
+
+        function dragMarker(e) { dragMarkerCommon(e.clientX, e.clientY); }
+        function dragMarkerTouch(e) { 
+            if (e.touches.length === 1) {
+                e.preventDefault(); 
+                const touch = e.touches[0]; 
+                dragMarkerCommon(touch.clientX, touch.clientY); 
+            }
+        }
+        function startDrag(e) { e.preventDefault(); startDragCommon(e.target, e.clientX, e.clientY); }
+        function startDragTouch(e) { 
+            // 🛠️ 安定化修正: 1本指でのみドラッグ開始
+            if (e.touches.length === 1) { 
+                e.preventDefault(); 
+                const touch = e.touches[0]; 
+                startDragCommon(e.target, touch.clientX, touch.clientY); 
+            }
+        }
+
+        // ドラッグ終了処理
+        function stopDrag(e) {
+            if (!isDragging || !activeMarker) return;
+            
+            document.removeEventListener('mousemove', dragMarker);
+            document.removeEventListener('mouseup', stopDrag);
+            document.removeEventListener('touchmove', dragMarkerTouch);
+            document.removeEventListener('touchend', stopDrag);
+
+            const finalClientX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX);
+            const finalClientY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY);
+            
+            if (finalClientX !== undefined) {
+                const toolbarRect = toolbar.getBoundingClientRect();
+                
+                const markerCenterY = finalClientY - markerOffsetY + activeMarker.offsetHeight / 2;
+                const toolbarCenter = toolbarRect.left + toolbarRect.width / 2;
+
+                if (markerCenterY > toolbarRect.top && markerCenterY < toolbarRect.bottom && finalClientX > toolbarRect.left && finalClientX < toolbarRect.right) {
+                    if (finalClientX < toolbarCenter) { 
+                        activeMarker.remove();
+                    } else { 
+                        const newMarkerText = activeMarker.textContent;
+                        const logicalX = parseFloat(activeMarker.getAttribute('data-logical-x'));
+                        const logicalY = parseFloat(activeMarker.getAttribute('data-logical-y'));
+                        addMarker(newMarkerText, logicalX + 15, logicalY + 15); 
+                    }
+                }
+            }
+
+            activeMarker.classList.remove('dragging');
+            toolbar.classList.remove('delete-zone-active', 'duplicate-zone-active');
+            
+            // 🛠️ 安定化修正: 状態を確実にクリア
+            isDragging = false;
+            activeMarker = null;
+        }
+
+
+        // --- 拡大縮小機能 ---
+
+        // マウスホイールイベント
+        boardContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY < 0 ? scaleStep : -scaleStep;
+            const newScale = scale + delta;
+            
+            updateScale(newScale, e.clientX, e.clientY);
+        }, { passive: false });
+    </script>
+
+</body>
+</html>
