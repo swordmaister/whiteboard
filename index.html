@@ -1,585 +1,1439 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>プロトタイプ14：機能安定化版</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #e0e0e0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            overflow: hidden;
-            min-height: 100vh;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>マルチボードアプリ</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-        #toolbar {
-            display: flex;
-            flex-wrap: wrap; 
-            gap: 10px;
-            padding: 15px; 
-            background-color: #fff;
-            border-radius: 0 0 8px 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            margin-bottom: 0; 
-            width: 90%; 
-            max-width: 800px; 
-            box-sizing: border-box;
-            transition: background-color 0.3s;
-            z-index: 100;
-            align-items: center;
-        }
-        
-        #toolbar.delete-zone-active { background-color: #fcebeb; }
-        #toolbar.duplicate-zone-active { background-color: #ebfcfd; }
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #1a1a2e;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  touch-action: none;
+}
 
-        #toolbar button, #toolbar input[type="color"], #toolbar input[type="range"], #toolbar textarea, #colorIndicator {
-            padding: 8px 12px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            white-space: nowrap;
-        }
-        
-        #colorIndicator {
-            width: 20px;
-            height: 20px;
-            padding: 0;
-            border: 2px solid #555;
-            cursor: default;
-            border-radius: 50%;
-            margin-left: -5px;
-        }
+/* ===== MODE SELECTOR ===== */
+#mode-selector {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  gap: 32px;
+}
 
-        #markerText {
-            flex-grow: 1; 
-            min-width: 120px;
-            min-height: 50px; 
-            resize: vertical;
-            white-space: pre-wrap; 
-            cursor: text;
-        }
+#mode-selector h1 {
+  color: #e2e8f0;
+  font-size: clamp(1.4rem, 4vw, 2.2rem);
+  font-weight: 300;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
 
-        #toolbar button:hover { background-color: #f0f0f0; }
-        
-        #board-container {
-            position: relative;
-            width: 90%;
-            max-width: 800px; 
-            height: 80vh; 
-            border: 5px solid #333;
-            background-color: #aaa; /* 描画範囲外の背景色 */
-            touch-action: none;
-            box-sizing: border-box;
-            overflow: hidden;
-        }
-        
-        #canvas-wrapper {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            overflow: visible; 
-            background-color: transparent; 
-        }
-        
-        #canvas {
-            position: absolute;
-            background-image: none; 
-            background-color: transparent; 
-            top: 0;
-            left: 0;
-            transform-origin: 0 0; 
-            cursor: crosshair;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5); /* 描画範囲の境界線 */
-        }
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  max-width: 560px;
+  width: 90%;
+}
 
-        .draggable-marker {
-            position: absolute;
-            min-width: 50px;
-            min-height: 25px;
-            padding: 8px 12px;
-            background-color: #3498db;
-            color: white;
-            border: 2px solid #2980b9;
-            border-radius: 5px;
-            font-weight: bold;
-            font-size: 14px;
-            user-select: none;
-            cursor: move;
-            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
-            z-index: 10;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            line-height: 1.2;
-            white-space: pre-wrap;
-            transition: none;
-        }
+.mode-card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px;
+  padding: 28px 20px;
+  cursor: pointer;
+  transition: all 0.25s;
+  text-align: center;
+  color: #e2e8f0;
+}
+.mode-card:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.3);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+}
+.mode-card .icon { font-size: 2.8rem; margin-bottom: 10px; }
+.mode-card .label { font-size: 1rem; font-weight: 600; }
+.mode-card .sub { font-size: 0.75rem; color: #94a3b8; margin-top: 4px; }
 
-        .draggable-marker.dragging {
-            opacity: 0.7;
-            transform: scale(1.05); 
-            transition: none;
-        }
-    </style>
+/* ===== APP SHELL ===== */
+#app { display: none; width: 100vw; height: 100vh; position: relative; }
+
+/* ===== TOOLBAR ===== */
+#toolbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15,20,40,0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  width: 96%;
+  max-width: 900px;
+  z-index: 100;
+  transition: opacity 0.3s, transform 0.3s, visibility 0.3s;
+  color: #e2e8f0;
+}
+#toolbar.hidden { opacity: 0; visibility: hidden; transform: translate(-50%, -20px); pointer-events: none; }
+
+.tb-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  align-items: center;
+}
+.tb-divider { border-top: 1px solid rgba(255,255,255,0.08); }
+
+.tb-btn {
+  padding: 7px 13px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.07);
+  color: #e2e8f0;
+  cursor: pointer;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.tb-btn:hover { background: rgba(255,255,255,0.15); }
+.tb-btn.active { background: rgba(52,152,219,0.6); border-color: #3498db; }
+
+.color-swatch {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.2) !important;
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.1s;
+  padding: 0 !important;
+}
+.color-swatch:hover { transform: scale(1.15); }
+.color-swatch.active { border-color: #fff !important; transform: scale(1.15); }
+
+#lineWidth { width: 80px; cursor: pointer; accent-color: #3498db; }
+
+.tb-section {
+  overflow: hidden;
+  max-height: 200px;
+  transition: max-height 0.3s, padding 0.3s, opacity 0.3s;
+}
+.tb-section.collapsed { max-height: 0; opacity: 0; padding-top: 0 !important; padding-bottom: 0 !important; }
+
+#markerTextInput {
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.08);
+  color: #e2e8f0;
+  min-width: 140px;
+  min-height: 36px;
+  resize: vertical;
+  font-size: 0.82rem;
+}
+
+#showToolbarBtn {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15,20,40,0.9);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 20px;
+  padding: 8px 20px;
+  color: #e2e8f0;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 99;
+  display: none;
+}
+#showToolbarBtn.visible { display: block; }
+
+/* ===== MODE INDICATOR ===== */
+#mode-badge {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  background: rgba(15,20,40,0.88);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  padding: 6px 14px;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  z-index: 90;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#mode-badge:hover { background: rgba(30,40,80,0.95); color: #e2e8f0; }
+
+/* ===== BOARD ===== */
+#board-container {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  overflow: hidden;
+  z-index: 1;
+}
+
+#canvas {
+  position: absolute;
+  top: 0; left: 0;
+  transform-origin: 0 0;
+  cursor: crosshair;
+}
+
+/* ===== MARKERS ===== */
+.draggable-marker {
+  position: absolute;
+  min-width: 44px;
+  min-height: 24px;
+  padding: 7px 11px;
+  background: #3498db;
+  color: white;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  user-select: none;
+  cursor: move;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: pre-wrap;
+  text-align: center;
+  transition: box-shadow 0.15s;
+}
+.draggable-marker:hover { box-shadow: 0 5px 18px rgba(0,0,0,0.6); }
+.draggable-marker.dragging { opacity: 0.85; transform: scale(1.06); }
+
+/* circle style for soccer players */
+.marker-circle {
+  border-radius: 50% !important;
+  width: 44px !important;
+  min-width: 44px !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0 !important;
+  font-size: 11px !important;
+}
+
+/* ===== ACTION BOXES ===== */
+#action-container {
+  position: fixed;
+  bottom: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  z-index: 50;
+  transition: bottom 0.3s ease;
+  pointer-events: none;
+}
+body.dragging-marker #action-container { bottom: 24px; }
+
+.action-box {
+  width: 120px;
+  height: 56px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  transition: transform 0.15s, background-color 0.15s;
+  pointer-events: auto;
+}
+#deleteBox { background: rgba(231,76,60,0.82); border: 2px solid #c0392b; }
+#duplicateBox { background: rgba(46,204,113,0.82); border: 2px solid #27ae60; }
+#editBox { background: rgba(243,156,18,0.82); border: 2px solid #e67e22; }
+.action-box.active { transform: scale(1.18) !important; filter: brightness(1.2); }
+
+/* ===== GAME PANELS ===== */
+#game-panel {
+  position: absolute;
+  right: 14px;
+  top: 80px;
+  width: 220px;
+  background: rgba(15,20,40,0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 14px;
+  z-index: 95;
+  color: #e2e8f0;
+  display: none;
+}
+#game-panel h3 { font-size: 0.9rem; color: #94a3b8; margin-bottom: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+#game-panel .gp-btn {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 7px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 7px;
+  color: #e2e8f0;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: background 0.15s;
+  text-align: center;
+}
+#game-panel .gp-btn:hover { background: rgba(255,255,255,0.15); }
+#game-panel .status-text {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  text-align: center;
+  margin-top: 6px;
+  min-height: 1.4em;
+}
+#game-panel select {
+  width: 100%;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 0.8rem;
+  margin-bottom: 7px;
+}
+
+/* ===== HANOI PEGS (drawn on canvas but labels here) ===== */
+.peg-label {
+  position: absolute;
+  color: rgba(255,255,255,0.5);
+  font-size: 11px;
+  pointer-events: none;
+  text-align: center;
+}
+
+/* ===== CARD STYLES ===== */
+.card-marker {
+  border-radius: 10px !important;
+  font-size: 1.2rem !important;
+  font-weight: 900 !important;
+  min-width: 52px !important;
+  min-height: 72px !important;
+  padding: 4px !important;
+  flex-direction: column !important;
+  line-height: 1 !important;
+  background: white !important;
+  color: #222 !important;
+  border: 2px solid #ccc !important;
+  box-shadow: 2px 3px 8px rgba(0,0,0,0.5) !important;
+}
+.card-marker.red { color: #c0392b !important; }
+.card-marker.face-down {
+  background: linear-gradient(135deg, #1a237e, #283593) !important;
+  color: transparent !important;
+  font-size: 0 !important;
+}
+.card-marker.face-down::after {
+  content: '🂠';
+  font-size: 1.8rem;
+  color: rgba(255,255,255,0.6);
+}
+</style>
 </head>
 <body>
 
-    <div id="toolbar">
-        <button id="drawModeButton" style="background-color: #3498db; color: white;">ペンモード</button>
-        
-        <div style="display: flex; align-items: center; gap: 5px;">
-             <span id="colorIndicator" style="background-color: #000000;" title="現在の描画色"></span>
-             <input type="color" id="colorPicker" value="#000000" title="描画色">
-        </div>
-        
-        <input type="range" id="lineWidth" min="1" max="50" value="5" title="線の太さ">
-        <button id="eraserButton">消しゴム</button>
-        <button id="clearButton">すべて消去</button>
-        
-        <hr style="width: 1px; height: 35px; background-color: #ccc; border: none; margin: 0 5px;">
-
-        <textarea id="markerText" placeholder="カンマ(,)または改行で区切って複数マーカーを一度に作成" rows="3">新しいマーカー</textarea>
-        <button id="addMarkerButton" style="background-color: #f39c12; color: white;">マーカー作成</button>
-        <span style="font-size: 12px; color: #555;">(🗑️左へドラッグで削除 / ➕右へドラッグで複製)</span>
+<!-- ===== MODE SELECTOR ===== -->
+<div id="mode-selector">
+  <h1>🎯 マルチボードアプリ</h1>
+  <div class="mode-grid">
+    <div class="mode-card" data-mode="freehand">
+      <div class="icon">🖊️</div>
+      <div class="label">フリーハンド</div>
+      <div class="sub">自由に描く・マーカー配置</div>
     </div>
-
-    <div id="board-container">
-        <div id="canvas-wrapper">
-            <canvas id="canvas" width="800" height="600"></canvas>
-        </div>
+    <div class="mode-card" data-mode="soccer">
+      <div class="icon">⚽</div>
+      <div class="label">サッカー作戦</div>
+      <div class="sub">選手を動かして戦術を描く</div>
     </div>
+    <div class="mode-card" data-mode="ferry">
+      <div class="icon">⛵</div>
+      <div class="label">船渡しゲーム</div>
+      <div class="sub">川を渡るパズル</div>
+    </div>
+    <div class="mode-card" data-mode="hanoi">
+      <div class="icon">🗼</div>
+      <div class="label">ハノイの塔</div>
+      <div class="sub">円盤を移動するパズル</div>
+    </div>
+    <div class="mode-card" data-mode="cards" style="grid-column:1/-1">
+      <div class="icon">🃏</div>
+      <div class="label">トランプシミュレーション</div>
+      <div class="sub">カードを自由に配置・配布</div>
+    </div>
+  </div>
+</div>
 
-    <script>
-        // --- 要素の取得 ---
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const boardContainer = document.getElementById('board-container');
-        const toolbar = document.getElementById('toolbar');
-        const colorPicker = document.getElementById('colorPicker');
-        const lineWidthRange = document.getElementById('lineWidth');
-        const colorIndicator = document.getElementById('colorIndicator');
-        const clearButton = document.getElementById('clearButton');
-        const eraserButton = document.getElementById('eraserButton');
-        const drawModeButton = document.getElementById('drawModeButton');
-        const markerText = document.getElementById('markerText');
-        const addMarkerButton = document.getElementById('addMarkerButton');
+<!-- ===== APP ===== -->
+<div id="app">
+  <div id="action-container">
+    <div id="deleteBox" class="action-box">🗑️ 削除</div>
+    <div id="editBox" class="action-box">✏️ 編集</div>
+    <div id="duplicateBox" class="action-box">➕ 複製</div>
+  </div>
 
-        // --- 状態管理 ---
-        let isDrawing = false; 
-        let lastX = 0; 
-        let lastY = 0; 
-        let currentColor = colorPicker.value;
-        let currentLineWidth = parseFloat(lineWidthRange.value);
-        let isEraserMode = false;
-        let isPenMode = true; 
+  <button id="showToolbarBtn">🔽 ツール表示</button>
 
-        let activeMarker = null; 
-        let markerOffsetX, markerOffsetY; 
-        let isDragging = false; 
+  <div id="toolbar">
+    <div class="tb-row">
+      <button class="tb-btn active" id="toolToggleBtn">🖊️ ペン</button>
+      
+      <div style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,0.05);padding:3px 8px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);">
+        <button class="color-swatch active" style="background:#e2e8f0" data-color="#e2e8f0"></button>
+        <button class="color-swatch" style="background:#e74c3c" data-color="#e74c3c"></button>
+        <button class="color-swatch" style="background:#3498db" data-color="#3498db"></button>
+        <button class="color-swatch" style="background:#2ecc71" data-color="#2ecc71"></button>
+        <button class="color-swatch" style="background:#f1c40f" data-color="#f1c40f"></button>
+        <input type="color" id="colorPicker" value="#e2e8f0" style="width:26px;height:26px;padding:0;border:1px solid rgba(255,255,255,0.2);border-radius:5px;background:transparent;cursor:pointer;">
+      </div>
 
-        // --- ズーム＆パン関連の状態 ---
-        let scale = 1.0;
-        let translateX = 0; 
-        let translateY = 0; 
-        let isPanning = false; 
-        let panStartX = 0; 
-        let panStartY = 0; 
-        
-        let initialPinchDistance = null; 
-        let initialPinchScale = null; 
-        
-        const scaleStep = 0.1;
-        const minScale = 0.5;
-        const maxScale = 3.0;
-        const LOGICAL_WIDTH = canvas.width;
-        const LOGICAL_HEIGHT = canvas.height;
+      <input type="range" id="lineWidth" min="1" max="50" value="4">
+      <button class="tb-btn" id="clearButton">🗑️ 全消去</button>
+      <div style="flex:1"></div>
+      <button class="tb-btn" id="toggleMarkerBtn">マーカー ▾</button>
+      <button class="tb-btn" id="hideToolbarBtn" style="color:#fca5a5;">✕</button>
+    </div>
+    <div class="tb-divider tb-section" id="markerSection" style="padding:8px 14px 10px;">
+      <div style="display:flex;gap:8px;align-items:flex-start;">
+        <textarea id="markerTextInput" rows="2">マーカー</textarea>
+        <button class="tb-btn" id="addMarkerButton" style="background:rgba(243,156,18,0.5);border-color:#f39c12;">一括作成</button>
+      </div>
+      <div style="font-size:0.72rem;color:#64748b;margin-top:5px;">ダブルクリック / 長押しで直接作成。ドラッグ→下部ボックスで削除・複製・編集</div>
+    </div>
+  </div>
 
-        // Canvasの初期化（白で塗りつぶし）
-        function initializeCanvasBackground() {
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
-        }
+  <!-- GAME PANEL -->
+  <div id="game-panel">
+    <h3 id="gp-title">パネル</h3>
+    <div id="gp-content"></div>
+  </div>
 
-        // --- ズーム＆パンの適用 ---
-        function applyTransform() {
-            canvas.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
-            
-            boardContainer.querySelectorAll('.draggable-marker').forEach(marker => {
-                const logicalX = parseFloat(marker.getAttribute('data-logical-x'));
-                const logicalY = parseFloat(marker.getAttribute('data-logical-y'));
-                marker.style.left = `${logicalX * scale + translateX}px`;
-                marker.style.top = `${logicalY * scale + translateY}px`;
-            });
-        }
+  <div id="board-container">
+    <canvas id="canvas"></canvas>
+  </div>
 
-        // --- スケール更新と中心点補正 ---
-        function updateScale(newScale, clientX, clientY) {
-            newScale = Math.max(minScale, Math.min(newScale, maxScale));
-            
-            const containerRect = boardContainer.getBoundingClientRect();
-            const mouseX = clientX - containerRect.left;
-            const mouseY = clientY - containerRect.top;
+  <div id="mode-badge">← モード選択に戻る</div>
+</div>
 
-            const ratio = newScale / scale;
+<script>
+// ============================================================
+//  CORE STATE
+// ============================================================
+let currentMode = null;
+let scale = 1, translateX = 0, translateY = 0;
+let isPanning = false, panStartX = 0, panStartY = 0;
+let isDrawing = false, lastX = 0, lastY = 0;
+let isPenMode = true, isEraserMode = false;
+let currentColor = '#e2e8f0', currentLineWidth = 4;
+let activeMarker = null, markerOffsetX = 0, markerOffsetY = 0;
+let isDragging = false;
+let initialPinchDist = null, initialPinchScale = null;
+const scaleStep = 0.1, minScale = 0.1, maxScale = 8;
+let LOGICAL_W = 1800, LOGICAL_H = 1200;
 
-            translateX = mouseX - (mouseX - translateX) * ratio;
-            translateY = mouseY - (mouseY - translateY) * ratio;
-            
-            scale = newScale;
-            applyTransform();
-        }
-        
-        // --- ズーム後の座標計算 ---
-        function getLogicalCoordinates(clientX, clientY) {
-            const containerRect = boardContainer.getBoundingClientRect();
-            const physicalX = clientX - containerRect.left;
-            const physicalY = clientY - containerRect.top;
-            
-            const logicalX = (physicalX - translateX) / scale;
-            const logicalY = (physicalY - translateY) / scale;
-            
-            return { logicalX, logicalY };
-        }
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const boardContainer = document.getElementById('board-container');
+const deleteBox = document.getElementById('deleteBox');
+const editBox = document.getElementById('editBox');
+const duplicateBox = document.getElementById('duplicateBox');
+const toolbar = document.getElementById('toolbar');
+const gamePanel = document.getElementById('game-panel');
+const gpTitle = document.getElementById('gp-title');
+const gpContent = document.getElementById('gp-content');
 
+// ============================================================
+//  MODE SELECTION
+// ============================================================
+document.querySelectorAll('.mode-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.getElementById('mode-selector').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    startMode(card.dataset.mode);
+  });
+});
+document.getElementById('mode-badge').addEventListener('click', () => {
+  if (!confirm('モード選択に戻りますか？（ボードの内容はリセットされます）')) return;
+  document.getElementById('mode-selector').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  cleanupMode();
+});
 
-        // 初期化処理
-        initializeCanvasBackground();
-        applyTransform();
-        colorIndicator.style.backgroundColor = currentColor; 
+function startMode(mode) {
+  currentMode = mode;
+  cleanupMarkers();
+  ctx.clearRect(0, 0, LOGICAL_W, LOGICAL_H);
+  canvas.width = LOGICAL_W;
+  canvas.height = LOGICAL_H;
+  initCanvasBg();
+  scale = 1; 
+  translateX = (window.innerWidth - LOGICAL_W) / 2;
+  translateY = (window.innerHeight - LOGICAL_H) / 2;
+  gamePanel.style.display = 'none';
 
-        // --- イベントリスナー ---
+  const badge = document.getElementById('mode-badge');
+  const modeNames = { freehand:'フリーハンド', soccer:'サッカー作戦', ferry:'船渡し', hanoi:'ハノイの塔', cards:'トランプ' };
+  badge.textContent = `← ${modeNames[mode] || mode}`;
 
-        // モード切り替え
-        drawModeButton.addEventListener('click', () => {
-            isPenMode = true;
-            isEraserMode = false;
-            canvas.style.cursor = 'crosshair';
-            drawModeButton.style.backgroundColor = '#3498db';
-            addMarkerButton.style.backgroundColor = '#f39c12';
-        });
-        eraserButton.addEventListener('click', () => {
-            isPenMode = true;
-            isEraserMode = true;
-            canvas.style.cursor = 'url("data:image/svg+xml;utf8,<svg xmlns=\\"http://www.w3.org/2000/svg\\" width=\\"32\\" height=\\"32\\" style=\\"background:white;border:1px solid black;border-radius:50%\\"><rect width=\\"30\\" height=\\"30\\" fill=\\"white\\" /></svg>") 16 16, auto';
-            drawModeButton.style.backgroundColor = '#2ecc71'; 
-            addMarkerButton.style.backgroundColor = '#f39c12';
-        });
-        addMarkerButton.addEventListener('click', () => {
-            isPenMode = false; 
-            canvas.style.cursor = 'default';
-            drawModeButton.style.backgroundColor = 'gray'; 
-            addMarkerButton.style.backgroundColor = '#e67e22'; 
-            
-            const markerTexts = markerText.value.split(/,|\n/).map(s => s.trim()).filter(s => s.length > 0);
-            
-            let count = 0;
-            const markerSize = 80; 
-            
-            markerTexts.forEach((text) => {
-                const xOffset = (count * markerSize) % LOGICAL_WIDTH;
-                const yOffset = Math.floor((count * markerSize) / LOGICAL_WIDTH) * markerSize;
-                
-                const logicalX = (LOGICAL_WIDTH / 2) - (markerSize / 2) + xOffset / scale;
-                const logicalY = (LOGICAL_HEIGHT / 2) - (markerSize / 2) + yOffset / scale;
+  if (mode === 'freehand') { setupFreehand(); }
+  else if (mode === 'soccer') { setupSoccer(); }
+  else if (mode === 'ferry') { setupFerry(); }
+  else if (mode === 'hanoi') { setupHanoi(); }
+  else if (mode === 'cards') { setupCards(); }
 
-                addMarker(text, logicalX, logicalY);
-                count++;
-            });
-        });
+  applyTransform();
+}
 
-        // ツール設定
-        lineWidthRange.addEventListener('input', (e) => {
-            currentLineWidth = parseFloat(e.target.value);
-            isEraserMode = false;
-        });
-        colorPicker.addEventListener('input', (e) => {
-            currentColor = e.target.value;
-            colorIndicator.style.backgroundColor = currentColor; 
-            isEraserMode = false;
-        });
-        clearButton.addEventListener('click', () => {
-            if (confirm('ボード全体の内容を消去してもよろしいですか？ (マーカー含む)')) {
-                ctx.clearRect(0, 0, canvas.width, canvas.height); 
-                initializeCanvasBackground(); 
-                boardContainer.querySelectorAll('.draggable-marker').forEach(m => m.remove());
-            }
-        });
+function cleanupMarkers() {
+  boardContainer.querySelectorAll('.draggable-marker').forEach(m => m.remove());
+}
+function cleanupMode() {
+  cleanupMarkers();
+  ctx.clearRect(0, 0, LOGICAL_W, LOGICAL_H);
+  gamePanel.style.display = 'none';
+}
 
-        // --- 描画ロジック ---
+// ============================================================
+//  CANVAS BG
+// ============================================================
+function initCanvasBg(bgColor) {
+  ctx.fillStyle = bgColor || '#1e2a3a';
+  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+}
 
-        function draw(e) {
-            if (!isDrawing || !isPenMode) return;
-            // パン操作中/マーカードラッグ中は描画しない
-            if (isPanning || isDragging) return; 
+// ============================================================
+//  TRANSFORM
+// ============================================================
+function applyTransform() {
+  canvas.style.transform = `translate(${translateX}px,${translateY}px) scale(${scale})`;
+  boardContainer.querySelectorAll('.draggable-marker').forEach(m => {
+    const lx = parseFloat(m.getAttribute('data-lx'));
+    const ly = parseFloat(m.getAttribute('data-ly'));
+    m.style.left = `${lx * scale + translateX}px`;
+    m.style.top = `${ly * scale + translateY}px`;
+  });
+}
 
-            ctx.beginPath();
-            ctx.strokeStyle = isEraserMode ? 'white' : currentColor;
-            ctx.lineWidth = currentLineWidth; 
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            
-            const { logicalX, logicalY } = getLogicalCoordinates(e.clientX, e.clientY);
+function updateScale(ns, cx, cy) {
+  ns = Math.max(minScale, Math.min(ns, maxScale));
+  const cr = boardContainer.getBoundingClientRect();
+  const mx = cx - cr.left, my = cy - cr.top;
+  const r = ns / scale;
+  translateX = mx - (mx - translateX) * r;
+  translateY = my - (my - translateY) * r;
+  scale = ns;
+  applyTransform();
+}
 
-            ctx.moveTo(lastX, lastY);
-            ctx.lineTo(logicalX, logicalY);
-            ctx.stroke();
+function getLogical(cx, cy) {
+  const cr = boardContainer.getBoundingClientRect();
+  return { lx: (cx - cr.left - translateX) / scale, ly: (cy - cr.top - translateY) / scale };
+}
 
-            [lastX, lastY] = [logicalX, logicalY];
-        }
+// ============================================================
+//  TOOLBAR
+// ============================================================
+document.getElementById('hideToolbarBtn').addEventListener('click', () => {
+  toolbar.classList.add('hidden');
+  document.getElementById('showToolbarBtn').classList.add('visible');
+});
+document.getElementById('showToolbarBtn').addEventListener('click', () => {
+  toolbar.classList.remove('hidden');
+  document.getElementById('showToolbarBtn').classList.remove('visible');
+});
+document.getElementById('toggleMarkerBtn').addEventListener('click', () => {
+  const s = document.getElementById('markerSection');
+  s.classList.toggle('collapsed');
+});
 
-        // 描画用のマウスイベント
-        canvas.addEventListener('mousedown', (e) => {
-            if (!isPenMode || e.button !== 0) return; // 左クリックのみ
-            e.preventDefault(); 
-            isDrawing = true;
-            const { logicalX, logicalY } = getLogicalCoordinates(e.clientX, e.clientY);
-            [lastX, lastY] = [logicalX, logicalY];
-            draw(e);
-        });
-        canvas.addEventListener('mousemove', draw);
-        canvas.addEventListener('mouseup', () => isDrawing = false);
-        canvas.addEventListener('mouseout', () => isDrawing = false);
+document.getElementById('toolToggleBtn').addEventListener('click', () => {
+  if (isEraserMode) { setPen(); } else { setEraser(); }
+});
 
-        // --- タッチイベント（安定化修正） ---
+function setPen() {
+  isPenMode = true; isEraserMode = false;
+  canvas.style.cursor = 'crosshair';
+  document.getElementById('toolToggleBtn').textContent = '🖊️ ペン';
+  document.getElementById('toolToggleBtn').classList.add('active');
+}
+function setEraser() {
+  isPenMode = true; isEraserMode = true;
+  canvas.style.cursor = 'cell';
+  document.getElementById('toolToggleBtn').textContent = '🧽 消しゴム';
+}
+function setNoPen() {
+  isPenMode = false; isEraserMode = false;
+  canvas.style.cursor = 'default';
+}
 
-        function getPinchDistance(touch1, touch2) {
-            const dx = touch1.clientX - touch2.clientX;
-            const dy = touch1.clientY - touch2.clientY;
-            return Math.sqrt(dx * dx + dy * dy);
-        }
+document.querySelectorAll('.color-swatch').forEach(sw => {
+  sw.addEventListener('click', e => {
+    currentColor = e.target.dataset.color;
+    document.getElementById('colorPicker').value = currentColor;
+    document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+    e.target.classList.add('active');
+    setPen();
+  });
+});
+document.getElementById('colorPicker').addEventListener('input', e => {
+  currentColor = e.target.value;
+  document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+  setPen();
+});
+document.getElementById('lineWidth').addEventListener('input', e => { currentLineWidth = +e.target.value; });
 
-        function getPinchCenter(touch1, touch2) {
-            return {
-                x: (touch1.clientX + touch2.clientX) / 2,
-                y: (touch1.clientY + touch2.clientY) / 2
-            };
-        }
+document.getElementById('clearButton').addEventListener('click', () => {
+  if (!confirm('ボードを全消去しますか？')) return;
+  cleanupMarkers();
+  ctx.clearRect(0, 0, LOGICAL_W, LOGICAL_H);
+  initCanvasBg();
+  if (currentMode === 'soccer') drawSoccerField();
+  else if (currentMode === 'ferry') drawFerryScene();
+  else if (currentMode === 'hanoi') { drawHanoiScene(); initHanoi(); renderHanoi(); }
+});
 
-        canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault(); 
-            const touches = e.touches.length;
-            
-            // マーカードラッグ中であれば、Canvasのイベントは無視
-            if (isDragging) return;
+document.getElementById('addMarkerButton').addEventListener('click', () => {
+  const texts = document.getElementById('markerTextInput').value.split(/,|\n/).map(s=>s.trim()).filter(s=>s);
+  const cr = boardContainer.getBoundingClientRect();
+  const cx = cr.left + cr.width/2, cy = cr.top + cr.height/2;
+  const {lx: clx, ly: cly} = getLogical(cx, cy);
+  texts.forEach((t, i) => addMarker(t, clx - 20 + i*70, cly - 12));
+});
 
-            if (touches === 1) { 
-                if (isPenMode) { 
-                    isDrawing = true;
-                    isPanning = false;
-                    const { logicalX, logicalY } = getLogicalCoordinates(e.touches[0].clientX, e.touches[0].clientY);
-                    [lastX, lastY] = [logicalX, logicalY];
-                }
-            } else if (touches === 2) { 
-                // ズームは全ての操作に優先
-                isDrawing = false;
-                isPanning = false;
-                initialPinchDistance = getPinchDistance(e.touches[0], e.touches[1]);
-                initialPinchScale = scale;
+// double-click board → create marker
+boardContainer.addEventListener('dblclick', e => {
+  if (e.target.closest('#toolbar') || e.target.closest('#game-panel') || e.target.closest('#showToolbarBtn')) return;
+  if (e.target.classList.contains('draggable-marker')) {
+    // edit on double-click
+    const newText = prompt('テキストを編集:', e.target.getAttribute('data-text') || e.target.textContent);
+    if (newText !== null) { e.target.textContent = newText; e.target.setAttribute('data-text', newText); }
+    return;
+  }
+  const text = prompt('マーカーのテキスト:');
+  if (text && text.trim()) {
+    const {lx, ly} = getLogical(e.clientX, e.clientY);
+    addMarker(text.trim(), lx - 22, ly - 12);
+  }
+});
 
-            } else if (touches >= 3) { // 3本指以上でパン開始
-                isDrawing = false;
-                isPanning = true;
-                panStartX = e.touches[0].clientX - translateX;
-                panStartY = e.touches[0].clientY - translateY;
-            }
-        }, { passive: false });
-        
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            const touches = e.touches.length;
+// ============================================================
+//  DRAWING
+// ============================================================
+function draw(cx, cy) {
+  if (!isDrawing || !isPenMode || isPanning || isDragging) return;
+  const {lx, ly} = getLogical(cx, cy);
+  ctx.beginPath();
+  ctx.strokeStyle = isEraserMode ? '#1e2a3a' : currentColor;
+  ctx.lineWidth = currentLineWidth;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.moveTo(lastX, lastY);
+  ctx.lineTo(lx, ly);
+  ctx.stroke();
+  [lastX, lastY] = [lx, ly];
+}
 
-            if (isDragging) return;
-            
-            if (touches === 1 && isDrawing && isPenMode) { // 1本指で描画中
-                draw({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY });
-                
-            } else if (touches === 2 && initialPinchDistance !== null) { // 2本指でズーム中
-                isDrawing = false;
-                isPanning = false; 
-                const currentPinchDistance = getPinchDistance(e.touches[0], e.touches[1]);
-                const pinchFactor = currentPinchDistance / initialPinchDistance;
-                let newScale = initialPinchScale * pinchFactor;
-                
-                const pinchCenter = getPinchCenter(e.touches[0], e.touches[1]);
-                updateScale(newScale, pinchCenter.x, pinchCenter.y);
-                
-            } else if (touches >= 3 && isPanning) { // 3本指以上でパン中
-                isDrawing = false;
-                translateX = e.touches[0].clientX - panStartX;
-                translateY = e.touches[0].clientY - panStartY;
-                applyTransform();
-            }
-        }, { passive: false });
-        
-        canvas.addEventListener('touchend', (e) => {
-            // 描画、ズーム、パンの状態をリセット
-            if (isDrawing) isDrawing = false;
-            initialPinchDistance = null;
-            initialPinchScale = null;
-            // 最後の指が離れたらパンもリセット
-            if (e.touches.length === 0) isPanning = false;
-        });
+canvas.addEventListener('mousedown', e => {
+  if (!isPenMode || e.button !== 0) return;
+  e.preventDefault();
+  isDrawing = true;
+  const {lx, ly} = getLogical(e.clientX, e.clientY);
+  [lastX, lastY] = [lx, ly];
+});
+canvas.addEventListener('mousemove', e => draw(e.clientX, e.clientY));
+canvas.addEventListener('mouseup', () => isDrawing = false);
+canvas.addEventListener('mouseout', () => isDrawing = false);
 
+// touch drawing
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (isDragging) return;
+  const t = e.touches;
+  if (t.length === 1 && isPenMode) {
+    isDrawing = true; isPanning = false;
+    const {lx, ly} = getLogical(t[0].clientX, t[0].clientY);
+    [lastX, lastY] = [lx, ly];
+  } else if (t.length === 2) {
+    isDrawing = false; isPanning = false;
+    initialPinchDist = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+    initialPinchScale = scale;
+  } else if (t.length >= 3) {
+    isDrawing = false; isPanning = true;
+    panStartX = t[0].clientX - translateX; panStartY = t[0].clientY - translateY;
+  }
+}, { passive: false });
 
-        // --- マーカー機能 ---
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (isDragging) return;
+  const t = e.touches;
+  if (t.length === 1 && isDrawing && isPenMode) {
+    draw(t[0].clientX, t[0].clientY);
+  } else if (t.length === 2 && initialPinchDist) {
+    isDrawing = false;
+    const d = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+    const cx = (t[0].clientX+t[1].clientX)/2, cy = (t[0].clientY+t[1].clientY)/2;
+    updateScale(initialPinchScale * d / initialPinchDist, cx, cy);
+  } else if (t.length >= 3 && isPanning) {
+    isDrawing = false;
+    translateX = t[0].clientX - panStartX; translateY = t[0].clientY - panStartY;
+    applyTransform();
+  }
+}, { passive: false });
 
-        function addMarker(text, logicalX, logicalY) {
-            const marker = document.createElement('div');
-            marker.className = 'draggable-marker';
-            marker.textContent = text; 
-            
-            marker.setAttribute('data-logical-x', logicalX);
-            marker.setAttribute('data-logical-y', logicalY);
-            
-            marker.style.left = `${logicalX * scale + translateX}px`;
-            marker.style.top = `${logicalY * scale + translateY}px`;
-            
-            boardContainer.appendChild(marker);
-            
-            marker.addEventListener('mousedown', startDrag);
-            // 🛠️ 安定化修正: マーカーでのタッチ操作は、Canvasのイベントと分離するため個別に登録
-            marker.addEventListener('touchstart', startDragTouch, { passive: false });
-        }
+canvas.addEventListener('touchend', e => {
+  isDrawing = false; initialPinchDist = null; initialPinchScale = null;
+  if (e.touches.length === 0) isPanning = false;
+});
 
-        // ドラッグ開始処理
-        function startDragCommon(target, clientX, clientY) {
-            if (!target.classList.contains('draggable-marker') || isDragging) return;
-            
-            // マーカー操作中は他の操作を全て無効化
-            isPenMode = false;
-            isDrawing = false;
-            isPanning = false;
-            
-            isDragging = true;
-            activeMarker = target; 
-            activeMarker.classList.add('dragging');
+boardContainer.addEventListener('wheel', e => {
+  e.preventDefault();
+  updateScale(scale + (e.deltaY < 0 ? scaleStep : -scaleStep), e.clientX, e.clientY);
+}, { passive: false });
 
-            const rect = activeMarker.getBoundingClientRect();
-            
-            markerOffsetX = clientX - rect.left;
-            markerOffsetY = clientY - rect.top;
+// pan with middle mouse or 2-finger background drag
+let middlePanning = false;
+boardContainer.addEventListener('mousedown', e => {
+  if (e.button === 1 || (e.button === 0 && !isPenMode && !e.target.classList.contains('draggable-marker'))) {
+    if (e.button === 1 || (e.altKey && e.button === 0)) {
+      e.preventDefault();
+      middlePanning = true;
+      panStartX = e.clientX - translateX; panStartY = e.clientY - translateY;
+      boardContainer.style.cursor = 'grabbing';
+    }
+  }
+});
+document.addEventListener('mousemove', e => {
+  if (middlePanning) {
+    translateX = e.clientX - panStartX; translateY = e.clientY - panStartY;
+    applyTransform();
+  }
+});
+document.addEventListener('mouseup', e => {
+  if (e.button === 1 || middlePanning) {
+    middlePanning = false;
+    boardContainer.style.cursor = '';
+  }
+});
 
-            // グローバルなmousemove/touchmoveでマーカーを動かす
-            document.addEventListener('mousemove', dragMarker);
-            document.addEventListener('mouseup', stopDrag);
-            document.addEventListener('touchmove', dragMarkerTouch, { passive: false });
-            document.addEventListener('touchend', stopDrag);
-        }
+// ============================================================
+//  MARKER ENGINE
+// ============================================================
+function addMarker(text, lx, ly, opts = {}) {
+  const m = document.createElement('div');
+  m.className = 'draggable-marker' + (opts.cls ? ' ' + opts.cls : '');
+  m.textContent = text;
+  m.setAttribute('data-lx', lx);
+  m.setAttribute('data-ly', ly);
+  m.setAttribute('data-text', text);
+  if (opts.color) m.style.backgroundColor = opts.color;
+  if (opts.borderColor) m.style.borderColor = opts.borderColor;
+  if (opts.textColor) m.style.color = opts.textColor;
+  if (opts.id) m.setAttribute('data-id', opts.id);
+  if (opts.extra) Object.entries(opts.extra).forEach(([k,v]) => m.setAttribute('data-' + k, v));
+  m.style.left = `${lx * scale + translateX}px`;
+  m.style.top = `${ly * scale + translateY}px`;
+  boardContainer.appendChild(m);
+  m.addEventListener('mousedown', startDrag);
+  m.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) { e.preventDefault(); startDragTouch(e); }
+  }, { passive: false });
+  return m;
+}
 
-        // マーカー移動処理（マウス/タッチ共通）
-        function dragMarkerCommon(clientX, clientY) {
-            if (!isDragging || !activeMarker) return;
-            
-            const containerRect = boardContainer.getBoundingClientRect();
-            const toolbarRect = toolbar.getBoundingClientRect();
+function isInBox(cx, cy, box) {
+  const r = box.getBoundingClientRect();
+  return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
+}
 
-            const physicalNewX = clientX - markerOffsetX - containerRect.left;
-            const physicalNewY = clientY - markerOffsetY - containerRect.top;
-            
-            const logicalNewX = (physicalNewX - translateX) / scale;
-            const logicalNewY = (physicalNewY - translateY) / scale;
+function startDragCommon(target, cx, cy) {
+  if (!target.classList.contains('draggable-marker') || isDragging) return;
+  isPenMode = false; isDrawing = false; isPanning = false;
+  isDragging = true;
+  activeMarker = target;
+  target.classList.add('dragging');
+  document.body.classList.add('dragging-marker');
+  const {lx: mlx, ly: mly} = getLogical(cx, cy);
+  markerOffsetX = mlx - parseFloat(target.getAttribute('data-lx'));
+  markerOffsetY = mly - parseFloat(target.getAttribute('data-ly'));
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('mouseup', onDragEnd);
+  document.addEventListener('touchmove', onDragMoveTouch, { passive: false });
+  document.addEventListener('touchend', onDragEnd);
+}
 
-            // --- 削除/複製ゾーン判定 ---
-            const markerCenterY = clientY - markerOffsetY + activeMarker.offsetHeight / 2;
-            const toolbarCenter = toolbarRect.left + toolbarRect.width / 2;
+function onDragMoveCommon(cx, cy) {
+  if (!isDragging || !activeMarker) return;
+  [deleteBox, editBox, duplicateBox].forEach(b => {
+    b.classList.toggle('active', isInBox(cx, cy, b));
+  });
+  const {lx, ly} = getLogical(cx, cy);
+  let nlx = lx - markerOffsetX, nly = ly - markerOffsetY;
+  const mw = activeMarker.offsetWidth / scale, mh = activeMarker.offsetHeight / scale;
+  nlx = Math.max(0, Math.min(nlx, LOGICAL_W - mw));
+  nly = Math.max(0, Math.min(nly, LOGICAL_H - mh));
+  activeMarker.setAttribute('data-lx', nlx);
+  activeMarker.setAttribute('data-ly', nly);
+  activeMarker.style.left = `${nlx * scale + translateX}px`;
+  activeMarker.style.top = `${nly * scale + translateY}px`;
+  // mode-specific drag feedback
+  if (currentMode === 'ferry') ferryDragFeedback(activeMarker, nlx, nly);
+  if (currentMode === 'hanoi') hanoiDragFeedback(activeMarker, nlx, nly);
+}
 
-            toolbar.classList.remove('delete-zone-active', 'duplicate-zone-active');
+function onDragMove(e) { onDragMoveCommon(e.clientX, e.clientY); }
+function onDragMoveTouch(e) { e.preventDefault(); if (e.touches.length===1) onDragMoveCommon(e.touches[0].clientX, e.touches[0].clientY); }
 
-            if (markerCenterY > toolbarRect.top && markerCenterY < toolbarRect.bottom && clientX > toolbarRect.left && clientX < toolbarRect.right) {
-                if (clientX < toolbarCenter) { toolbar.classList.add('delete-zone-active'); } 
-                else { toolbar.classList.add('duplicate-zone-active'); }
-            }
+function startDrag(e) { e.preventDefault(); startDragCommon(e.target, e.clientX, e.clientY); }
+function startDragTouch(e) { startDragCommon(e.target, e.touches[0].clientX, e.touches[0].clientY); }
 
-            // 範囲制限 (論理座標で制限)
-            const markerLogicalWidth = activeMarker.offsetWidth / scale;
-            const markerLogicalHeight = activeMarker.offsetHeight / scale;
-            
-            const restrictedLogicalX = Math.max(0, Math.min(logicalNewX, LOGICAL_WIDTH - markerLogicalWidth));
-            const restrictedLogicalY = Math.min(logicalNewY, LOGICAL_HEIGHT - markerLogicalHeight);
+function onDragEnd(e) {
+  if (!isDragging || !activeMarker) return;
+  document.removeEventListener('mousemove', onDragMove);
+  document.removeEventListener('mouseup', onDragEnd);
+  document.removeEventListener('touchmove', onDragMoveTouch);
+  document.removeEventListener('touchend', onDragEnd);
 
-            activeMarker.setAttribute('data-logical-x', restrictedLogicalX);
-            activeMarker.setAttribute('data-logical-y', restrictedLogicalY);
+  const cx = e.clientX ?? e.changedTouches?.[0]?.clientX;
+  const cy = e.clientY ?? e.changedTouches?.[0]?.clientY;
 
-            activeMarker.style.left = `${restrictedLogicalX * scale + translateX}px`;
-            activeMarker.style.top = `${restrictedLogicalY * scale + translateY}px`;
-        }
+  if (cx !== undefined) {
+    if (isInBox(cx, cy, deleteBox)) {
+      if (currentMode === 'hanoi') { alert('ハノイの塔では削除できません'); }
+      else { activeMarker.remove(); }
+    } else if (isInBox(cx, cy, editBox)) {
+      const nt = prompt('テキストを編集:', activeMarker.textContent);
+      if (nt !== null) { activeMarker.textContent = nt; activeMarker.setAttribute('data-text', nt); }
+    } else if (isInBox(cx, cy, duplicateBox)) {
+      const lx = parseFloat(activeMarker.getAttribute('data-lx'));
+      const ly = parseFloat(activeMarker.getAttribute('data-ly'));
+      const opts = { cls: activeMarker.className.replace('draggable-marker','').replace('dragging','').trim() };
+      if (activeMarker.style.backgroundColor) opts.color = activeMarker.style.backgroundColor;
+      addMarker(activeMarker.textContent, lx+20, ly+20, opts);
+    } else {
+      // mode-specific drop
+      if (currentMode === 'ferry') ferryOnDrop(activeMarker);
+      if (currentMode === 'hanoi') hanoiOnDrop(activeMarker);
+    }
+  }
 
-        function dragMarker(e) { dragMarkerCommon(e.clientX, e.clientY); }
-        function dragMarkerTouch(e) { 
-            if (e.touches.length === 1) {
-                e.preventDefault(); 
-                const touch = e.touches[0]; 
-                dragMarkerCommon(touch.clientX, touch.clientY); 
-            }
-        }
-        function startDrag(e) { e.preventDefault(); startDragCommon(e.target, e.clientX, e.clientY); }
-        function startDragTouch(e) { 
-            // 🛠️ 安定化修正: 1本指でのみドラッグ開始
-            if (e.touches.length === 1) { 
-                e.preventDefault(); 
-                const touch = e.touches[0]; 
-                startDragCommon(e.target, touch.clientX, touch.clientY); 
-            }
-        }
+  activeMarker.classList.remove('dragging');
+  document.body.classList.remove('dragging-marker');
+  [deleteBox, editBox, duplicateBox].forEach(b => b.classList.remove('active'));
+  isDragging = false;
+  activeMarker = null;
+  setPen();
+}
 
-        // ドラッグ終了処理
-        function stopDrag(e) {
-            if (!isDragging || !activeMarker) return;
-            
-            document.removeEventListener('mousemove', dragMarker);
-            document.removeEventListener('mouseup', stopDrag);
-            document.removeEventListener('touchmove', dragMarkerTouch);
-            document.removeEventListener('touchend', stopDrag);
+// ============================================================
+//  MODE: FREEHAND
+// ============================================================
+function setupFreehand() {
+  initCanvasBg('#1e2a3a');
+  setPen();
+  toolbar.classList.remove('hidden');
+  document.getElementById('showToolbarBtn').classList.remove('visible');
+}
 
-            const finalClientX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX);
-            const finalClientY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY);
-            
-            if (finalClientX !== undefined) {
-                const toolbarRect = toolbar.getBoundingClientRect();
-                
-                const markerCenterY = finalClientY - markerOffsetY + activeMarker.offsetHeight / 2;
-                const toolbarCenter = toolbarRect.left + toolbarRect.width / 2;
+// ============================================================
+//  MODE: SOCCER
+// ============================================================
+const SOCCER_TEAM_A = ['GK','CB','CB','LB','RB','DM','CM','CM','LW','RW','CF'];
+const SOCCER_TEAM_B = ['GK','CB','CB','LB','RB','DM','CM','CM','LW','RW','CF'];
 
-                if (markerCenterY > toolbarRect.top && markerCenterY < toolbarRect.bottom && finalClientX > toolbarRect.left && finalClientX < toolbarRect.right) {
-                    if (finalClientX < toolbarCenter) { 
-                        activeMarker.remove();
-                    } else { 
-                        const newMarkerText = activeMarker.textContent;
-                        const logicalX = parseFloat(activeMarker.getAttribute('data-logical-x'));
-                        const logicalY = parseFloat(activeMarker.getAttribute('data-logical-y'));
-                        addMarker(newMarkerText, logicalX + 15, logicalY + 15); 
-                    }
-                }
-            }
+// 4-3-3 default positions (x: 0-1, y: 0-1 in field)
+const SOCCER_POS_A = [
+  [0.5,0.06], [0.3,0.22],[0.7,0.22], [0.12,0.28],[0.88,0.28],
+  [0.5,0.38], [0.3,0.5],[0.7,0.5],
+  [0.18,0.68],[0.82,0.68],[0.5,0.75]
+];
+const SOCCER_POS_B = [
+  [0.5,0.94], [0.3,0.78],[0.7,0.78], [0.12,0.72],[0.88,0.72],
+  [0.5,0.62], [0.3,0.5],[0.7,0.5],
+  [0.18,0.32],[0.82,0.32],[0.5,0.25]
+];
 
-            activeMarker.classList.remove('dragging');
-            toolbar.classList.remove('delete-zone-active', 'duplicate-zone-active');
-            
-            // 🛠️ 安定化修正: 状態を確実にクリア
-            isDragging = false;
-            activeMarker = null;
-        }
+const FIELD_X = 100, FIELD_Y = 50, FIELD_W = 1600, FIELD_H = 1100;
 
+function drawSoccerField() {
+  ctx.clearRect(0, 0, LOGICAL_W, LOGICAL_H);
+  ctx.fillStyle = '#1a472a'; ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+  // stripes
+  for (let i = 0; i < 12; i++) {
+    ctx.fillStyle = i%2===0 ? 'rgba(255,255,255,0.03)' : 'transparent';
+    ctx.fillRect(FIELD_X, FIELD_Y + i*FIELD_H/12, FIELD_W, FIELD_H/12);
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 3;
+  // outer
+  ctx.strokeRect(FIELD_X, FIELD_Y, FIELD_W, FIELD_H);
+  // halfway
+  ctx.beginPath(); ctx.moveTo(FIELD_X, FIELD_Y+FIELD_H/2); ctx.lineTo(FIELD_X+FIELD_W, FIELD_Y+FIELD_H/2); ctx.stroke();
+  // center circle
+  ctx.beginPath(); ctx.arc(FIELD_X+FIELD_W/2, FIELD_Y+FIELD_H/2, 100, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(FIELD_X+FIELD_W/2, FIELD_Y+FIELD_H/2, 5, 0, Math.PI*2); ctx.fillStyle='white'; ctx.fill();
+  // penalty areas
+  const pw=440, ph=180;
+  ctx.strokeRect(FIELD_X+(FIELD_W-pw)/2, FIELD_Y, pw, ph);
+  ctx.strokeRect(FIELD_X+(FIELD_W-pw)/2, FIELD_Y+FIELD_H-ph, pw, ph);
+  const gw=160,gh=60;
+  ctx.strokeRect(FIELD_X+(FIELD_W-gw)/2, FIELD_Y, gw, gh);
+  ctx.strokeRect(FIELD_X+(FIELD_W-gw)/2, FIELD_Y+FIELD_H-gh, gw, gh);
+  // penalty spots
+  const sp=130;
+  [FIELD_Y+sp, FIELD_Y+FIELD_H-sp].forEach(y=>{
+    ctx.beginPath(); ctx.arc(FIELD_X+FIELD_W/2, y, 5, 0, Math.PI*2); ctx.fill();
+  });
+  // corner arcs
+  [[FIELD_X,FIELD_Y],[FIELD_X+FIELD_W,FIELD_Y],[FIELD_X,FIELD_Y+FIELD_H],[FIELD_X+FIELD_W,FIELD_Y+FIELD_H]].forEach(([x,y])=>{
+    ctx.beginPath();
+    const sa = x===FIELD_X&&y===FIELD_Y ? 0 : x===FIELD_X+FIELD_W&&y===FIELD_Y ? Math.PI/2 : x===FIELD_X&&y===FIELD_Y+FIELD_H ? -Math.PI/2 : Math.PI;
+    ctx.arc(x, y, 30, sa, sa+Math.PI/2); ctx.stroke();
+  });
+}
 
-        // --- 拡大縮小機能 ---
+function placeSoccerPlayers() {
+  cleanupMarkers();
+  SOCCER_TEAM_A.forEach((pos, i) => {
+    const [rx, ry] = SOCCER_POS_A[i];
+    const lx = FIELD_X + rx*FIELD_W - 22;
+    const ly = FIELD_Y + ry*FIELD_H - 22;
+    addMarker(pos, lx, ly, { cls:'marker-circle', color:'#e74c3c', borderColor:'rgba(255,255,255,0.4)', id:'a'+i });
+  });
+  SOCCER_TEAM_B.forEach((pos, i) => {
+    const [rx, ry] = SOCCER_POS_B[i];
+    const lx = FIELD_X + rx*FIELD_W - 22;
+    const ly = FIELD_Y + ry*FIELD_H - 22;
+    addMarker(pos, lx, ly, { cls:'marker-circle', color:'#3498db', borderColor:'rgba(255,255,255,0.4)', id:'b'+i });
+  });
+  // ball
+  addMarker('⚽', FIELD_X+FIELD_W/2-20, FIELD_Y+FIELD_H/2-20, { color:'#2c3e50', borderColor:'#fff' });
+}
 
-        // マウスホイールイベント
-        boardContainer.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            const delta = e.deltaY < 0 ? scaleStep : -scaleStep;
-            const newScale = scale + delta;
-            
-            updateScale(newScale, e.clientX, e.clientY);
-        }, { passive: false });
-    </script>
+function setupSoccer() {
+  drawSoccerField();
+  setPen();
+  placeSoccerPlayers();
+  gamePanel.style.display = 'block';
+  gpTitle.textContent = '⚽ サッカー作戦';
+  gpContent.innerHTML = `
+    <button class="gp-btn" id="soc-reset">🔄 選手をリセット</button>
+    <button class="gp-btn" id="soc-clear-draw">✏️ 描画を消去</button>
+    <div style="margin-top:8px;font-size:0.78rem;color:#64748b;">
+      ● 赤：チームA　青：チームB<br>
+      ● ドラッグで移動<br>
+      ● ペンで矢印・動き描き込み可
+    </div>
+  `;
+  document.getElementById('soc-reset').onclick = () => { drawSoccerField(); placeSoccerPlayers(); };
+  document.getElementById('soc-clear-draw').onclick = () => { drawSoccerField(); };
+  // fit view
+  scale = Math.min(window.innerWidth/LOGICAL_W, window.innerHeight/LOGICAL_H) * 0.95;
+  translateX = (window.innerWidth - LOGICAL_W*scale)/2;
+  translateY = (window.innerHeight - LOGICAL_H*scale)/2;
+  applyTransform();
+}
 
+// ============================================================
+//  MODE: FERRY (Missionary & Cannibal)
+// ============================================================
+// State
+let ferryState = null;
+const FERRY_BANK_L_X = 80, FERRY_BANK_R_X = 1300;
+const FERRY_BANK_Y = 200, FERRY_WATER_Y = 500;
+const FERRY_BOAT_Y = 520;
+const FERRY_BOAT_W = 300, FERRY_BOAT_H = 120;
+
+function drawFerryScene() {
+  ctx.clearRect(0, 0, LOGICAL_W, LOGICAL_H);
+  // sky
+  const sg = ctx.createLinearGradient(0,0,0,400);
+  sg.addColorStop(0,'#1a1a4e'); sg.addColorStop(1,'#2c3e8c');
+  ctx.fillStyle=sg; ctx.fillRect(0,0,LOGICAL_W,600);
+  // water
+  const wg = ctx.createLinearGradient(0,500,0,LOGICAL_H);
+  wg.addColorStop(0,'#1a3a6b'); wg.addColorStop(1,'#0d1f3a');
+  ctx.fillStyle=wg; ctx.fillRect(0,500,LOGICAL_W,LOGICAL_H-500);
+  // wave lines
+  ctx.strokeStyle='rgba(100,160,255,0.15)'; ctx.lineWidth=2;
+  for(let y=540;y<LOGICAL_H;y+=40){
+    ctx.beginPath();
+    for(let x=0;x<LOGICAL_W;x+=80){ ctx.moveTo(x,y); ctx.bezierCurveTo(x+20,y-8,x+60,y+8,x+80,y); }
+    ctx.stroke();
+  }
+  // banks
+  ctx.fillStyle='#5d4037'; ctx.fillRect(FERRY_BANK_L_X,350,320,LOGICAL_H-350);
+  ctx.fillStyle='#5d4037'; ctx.fillRect(FERRY_BANK_R_X,350,320,LOGICAL_H-350);
+  // grass
+  ctx.fillStyle='#2e7d32'; ctx.fillRect(FERRY_BANK_L_X,340,320,30);
+  ctx.fillStyle='#2e7d32'; ctx.fillRect(FERRY_BANK_R_X,340,320,30);
+  // labels
+  ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.font='bold 24px Arial';
+  ctx.fillText('出発地', FERRY_BANK_L_X+90, 320);
+  ctx.fillText('目的地', FERRY_BANK_R_X+90, 320);
+  // boat
+  drawBoat(ferryState ? ferryState.boatSide : 'left');
+}
+
+function drawBoat(side) {
+  const bx = side==='left' ? FERRY_BANK_L_X+320 : FERRY_BANK_R_X - FERRY_BOAT_W;
+  ctx.fillStyle='#795548';
+  ctx.beginPath();
+  ctx.moveTo(bx, FERRY_BOAT_Y); ctx.lineTo(bx+FERRY_BOAT_W, FERRY_BOAT_Y);
+  ctx.lineTo(bx+FERRY_BOAT_W-20, FERRY_BOAT_Y+FERRY_BOAT_H);
+  ctx.lineTo(bx+20, FERRY_BOAT_Y+FERRY_BOAT_H); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#8d6e63';
+  ctx.fillRect(bx+10, FERRY_BOAT_Y, FERRY_BOAT_W-20, 20);
+  // mast
+  ctx.fillStyle='#4e342e';
+  ctx.fillRect(bx+FERRY_BOAT_W/2-5, FERRY_BOAT_Y-100, 10, 100);
+  ctx.fillStyle='rgba(200,200,255,0.6)';
+  ctx.beginPath(); ctx.moveTo(bx+FERRY_BOAT_W/2,FERRY_BOAT_Y-100); 
+  ctx.lineTo(bx+FERRY_BOAT_W/2+80,FERRY_BOAT_Y-60); 
+  ctx.lineTo(bx+FERRY_BOAT_W/2,FERRY_BOAT_Y-20); ctx.closePath(); ctx.fill();
+  // label
+  ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.font='16px Arial';
+  ctx.fillText('🚤 ボート', bx+80, FERRY_BOAT_Y+70);
+  ferryState.boatX = bx;
+}
+
+function initFerry() {
+  ferryState = { boatSide:'left', leftBank:[], rightBank:[], onBoat:[], boatX:0 };
+  const types = [
+    {label:'宣教師1',color:'#3498db',type:'M'},
+    {label:'宣教師2',color:'#2980b9',type:'M'},
+    {label:'宣教師3',color:'#1abc9c',type:'M'},
+    {label:'人食い1',color:'#e74c3c',type:'C'},
+    {label:'人食い2',color:'#c0392b',type:'C'},
+    {label:'人食い3',color:'#e67e22',type:'C'},
+  ];
+  types.forEach((t,i) => {
+    const lx = FERRY_BANK_L_X + 30 + (i%2)*130;
+    const ly = 380 + Math.floor(i/2)*90;
+    const m = addMarker(t.label, lx, ly, { color:t.color, extra:{ type:t.type, loc:'left' }, id:'ferry'+i });
+    ferryState.leftBank.push(m);
+  });
+  updateFerryStatus();
+}
+
+function ferryDragFeedback(marker, lx, ly) {
+  // highlight boat if hovering
+  const bx = ferryState.boatX;
+  const by = FERRY_BOAT_Y;
+  if (lx > bx && lx < bx+FERRY_BOAT_W && ly > by && ly < by+FERRY_BOAT_H+40) {
+    // glow effect (redraw would be expensive; skip visual for now)
+  }
+}
+
+function ferryOnDrop(marker) {
+  const lx = parseFloat(marker.getAttribute('data-lx'));
+  const ly = parseFloat(marker.getAttribute('data-ly'));
+  const bx = ferryState.boatX;
+  // drop on boat?
+  if (lx > bx - 30 && lx < bx+FERRY_BOAT_W+30 && ly > FERRY_BOAT_Y-60 && ly < FERRY_BOAT_Y+FERRY_BOAT_H+40) {
+    marker.setAttribute('data-loc','boat');
+  } else if (lx < 500) {
+    marker.setAttribute('data-loc','left');
+  } else {
+    marker.setAttribute('data-loc','right');
+  }
+  updateFerryStatus();
+}
+
+function updateFerryStatus() {
+  const markers = boardContainer.querySelectorAll('.draggable-marker[data-id^="ferry"]');
+  let onBoat=0, leftM=0, leftC=0, rightM=0, rightC=0;
+  markers.forEach(m => {
+    const loc = m.getAttribute('data-loc') || 'left';
+    const type = m.getAttribute('data-type');
+    if (loc==='boat') onBoat++;
+    else if (loc==='left') { type==='M'?leftM++:leftC++; }
+    else { type==='M'?rightM++:rightC++; }
+  });
+
+  let status = `ボート: ${onBoat}/2人 | 左岸 M:${leftM} C:${leftC} | 右岸 M:${rightM} C:${rightC}`;
+  let warn = '';
+  if (leftC > leftM && leftM > 0) warn += '⚠️ 左岸で宣教師が危険！ ';
+  if (rightC > rightM && rightM > 0) warn += '⚠️ 右岸で宣教師が危険！ ';
+  if (onBoat > 2) warn += '⚠️ ボートに3人以上！ ';
+  if (rightM+rightC === 6) warn = '🎉 全員渡りました！';
+
+  document.getElementById('ferry-status').textContent = status;
+  document.getElementById('ferry-warn').textContent = warn;
+}
+
+function setupFerry() {
+  ferryState = { boatSide:'left', boatX:0 };
+  drawFerryScene();
+  initFerry();
+  gamePanel.style.display = 'block';
+  gpTitle.textContent = '⛵ 船渡しゲーム';
+  gpContent.innerHTML = `
+    <div id="ferry-status" style="font-size:0.75rem;color:#94a3b8;margin-bottom:6px;"></div>
+    <div id="ferry-warn" style="font-size:0.78rem;color:#fbbf24;min-height:1.5em;margin-bottom:8px;"></div>
+    <button class="gp-btn" id="ferry-move-boat">🚤 ボートを対岸へ</button>
+    <button class="gp-btn" id="ferry-reset">🔄 リセット</button>
+    <div style="font-size:0.75rem;color:#64748b;margin-top:6px;">
+      ● ドラッグで乗船・下船<br>
+      ● ボートは2人まで乗れる<br>
+      ● 宣教師が人食いに負けないように！
+    </div>
+  `;
+  document.getElementById('ferry-move-boat').onclick = () => {
+    const onBoat = [...boardContainer.querySelectorAll('.draggable-marker[data-id^="ferry"]')]
+      .filter(m=>m.getAttribute('data-loc')==='boat');
+    if (onBoat.length===0) { alert('ボートに誰も乗っていません'); return; }
+    if (onBoat.length>2) { alert('ボートは2人まで'); return; }
+    ferryState.boatSide = ferryState.boatSide==='left'?'right':'left';
+    const newLoc = ferryState.boatSide==='left'?'left':'right';
+    // move boat and passengers visually
+    drawFerryScene();
+    const bx = ferryState.boatX;
+    onBoat.forEach((m,i)=>{
+      m.setAttribute('data-loc',newLoc);
+      const lx = bx + 30 + i*130;
+      const ly = FERRY_BOAT_Y + 20;
+      m.setAttribute('data-lx',lx); m.setAttribute('data-ly',ly);
+      m.style.left=`${lx*scale+translateX}px`; m.style.top=`${ly*scale+translateY}px`;
+    });
+    updateFerryStatus();
+  };
+  document.getElementById('ferry-reset').onclick = () => { 
+    drawFerryScene(); cleanupMarkers(); initFerry(); 
+  };
+  scale = Math.min(window.innerWidth/LOGICAL_W, window.innerHeight/LOGICAL_H)*0.9;
+  translateX = (window.innerWidth-LOGICAL_W*scale)/2;
+  translateY = (window.innerHeight-LOGICAL_H*scale)/2;
+  applyTransform();
+}
+
+// ============================================================
+//  MODE: HANOI
+// ============================================================
+let hanoiState = null;
+const HANOI_PEGS = [400, 900, 1400]; // center X of each peg
+const HANOI_PEG_Y_TOP = 200, HANOI_PEG_Y_BOT = 900;
+const HANOI_BASE_Y = 920;
+const HANOI_DISK_H = 55;
+const HANOI_DISK_COLORS = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#9b59b6','#1abc9c'];
+const HANOI_DISK_MIN_W = 80, HANOI_DISK_STEP = 60;
+
+function drawHanoiScene() {
+  ctx.clearRect(0,0,LOGICAL_W,LOGICAL_H);
+  // bg
+  const bg = ctx.createLinearGradient(0,0,0,LOGICAL_H);
+  bg.addColorStop(0,'#0d1117'); bg.addColorStop(1,'#1a1f2e');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,LOGICAL_W,LOGICAL_H);
+  // grid lines
+  ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+  for(let x=0;x<LOGICAL_W;x+=80){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,LOGICAL_H); ctx.stroke(); }
+  for(let y=0;y<LOGICAL_H;y+=80){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(LOGICAL_W,y); ctx.stroke(); }
+  // base
+  ctx.fillStyle='#4a3728';
+  ctx.beginPath(); ctx.roundRect(200, HANOI_BASE_Y, 1400, 40, 8); ctx.fill();
+  // pegs
+  HANOI_PEGS.forEach((px,i)=>{
+    ctx.fillStyle='#6d4c41';
+    ctx.beginPath(); ctx.roundRect(px-14, HANOI_PEG_Y_TOP, 28, HANOI_PEG_Y_BOT-HANOI_PEG_Y_TOP, 4); ctx.fill();
+    // peg label
+    ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.font='bold 28px Arial'; ctx.textAlign='center';
+    ctx.fillText(['A','B','C'][i], px, HANOI_BASE_Y+75);
+  });
+  ctx.textAlign='left';
+}
+
+function hanoiDiskW(size, total) {
+  return HANOI_DISK_MIN_W + (size-1)*HANOI_DISK_STEP;
+}
+
+function renderHanoi() {
+  if (!hanoiState) return;
+  // remove existing disk markers
+  boardContainer.querySelectorAll('.draggable-marker[data-id^="disk"]').forEach(m=>m.remove());
+  const total = hanoiState.totalDisks;
+  hanoiState.pegs.forEach((peg, pi)=>{
+    peg.forEach((diskSize, di)=>{
+      const w = hanoiDiskW(diskSize, total);
+      const lx = HANOI_PEGS[pi] - w/2;
+      const ly = HANOI_BASE_Y - (di+1)*HANOI_DISK_H - 5;
+      const color = HANOI_DISK_COLORS[diskSize-1];
+      const m = addMarker(`${diskSize}`, lx, ly, {
+        color, id:'disk'+diskSize,
+        extra:{ size:diskSize, peg:pi }
+      });
+      m.style.width = w+'px';
+      m.style.height = HANOI_DISK_H+'px';
+      m.style.minWidth = w+'px';
+      m.style.minHeight = HANOI_DISK_H+'px';
+      m.style.borderRadius = '8px';
+      m.style.fontSize = '18px';
+    });
+  });
+  updateHanoiStatus();
+}
+
+function hanoiDragFeedback(marker, lx, ly) {
+  // highlight which peg they're near
+  HANOI_PEGS.forEach((px,i)=>{
+    const dx = Math.abs(lx - px);
+    if (dx < 150) {
+      // could draw highlight — skip for perf
+    }
+  });
+}
+
+function hanoiOnDrop(marker) {
+  if (!hanoiState) return;
+  const size = parseInt(marker.getAttribute('data-size'));
+  const fromPeg = parseInt(marker.getAttribute('data-peg'));
+  const lx = parseFloat(marker.getAttribute('data-lx'));
+  const cx = lx + parseFloat(marker.style.width)/2;
+
+  // find closest peg
+  let closest = 0, minD = 9999;
+  HANOI_PEGS.forEach((px,i)=>{ const d=Math.abs(cx-px); if(d<minD){minD=d;closest=i;} });
+
+  if (closest === fromPeg) { renderHanoi(); return; }
+  // validate move
+  const topOfTarget = hanoiState.pegs[closest].at(-1);
+  if (topOfTarget !== undefined && topOfTarget < size) {
+    alert(`❌ 大きい円盤 (${size}) を小さい円盤 (${topOfTarget}) の上には置けません`);
+    renderHanoi(); return;
+  }
+  // check it's the top disk
+  const topOfSource = hanoiState.pegs[fromPeg].at(-1);
+  if (topOfSource !== size) {
+    alert('❌ 一番上の円盤のみ動かせます');
+    renderHanoi(); return;
+  }
+  // do move
+  hanoiState.pegs[fromPeg].pop();
+  hanoiState.pegs[closest].push(size);
+  hanoiState.moves++;
+  renderHanoi();
+  // check win
+  if (hanoiState.pegs[2].length === hanoiState.totalDisks) {
+    setTimeout(()=>alert(`🎉 クリア！ ${hanoiState.moves}手で完成しました！\n最小手数: ${Math.pow(2,hanoiState.totalDisks)-1}手`),100);
+  }
+}
+
+function initHanoi(n=4) {
+  hanoiState = { totalDisks:n, moves:0, pegs:[[],[],[]] };
+  for(let i=n;i>=1;i--) hanoiState.pegs[0].push(i);
+}
+
+function updateHanoiStatus() {
+  const el = document.getElementById('hanoi-status');
+  if (el && hanoiState) el.textContent = `手数: ${hanoiState.moves} / 最小: ${Math.pow(2,hanoiState.totalDisks)-1}`;
+}
+
+function setupHanoi() {
+  drawHanoiScene();
+  initHanoi(4);
+  renderHanoi();
+  gamePanel.style.display = 'block';
+  gpTitle.textContent = '🗼 ハノイの塔';
+  gpContent.innerHTML = `
+    <div id="hanoi-status" style="font-size:0.8rem;color:#94a3b8;margin-bottom:8px;"></div>
+    <label style="font-size:0.78rem;color:#94a3b8;">円盤の数:</label>
+    <select id="hanoi-disks">
+      <option value="3">3枚</option>
+      <option value="4" selected>4枚</option>
+      <option value="5">5枚</option>
+      <option value="6">6枚</option>
+      <option value="7">7枚</option>
+    </select>
+    <button class="gp-btn" id="hanoi-reset">🔄 リセット</button>
+    <button class="gp-btn" id="hanoi-hint">💡 ヒント（次の1手）</button>
+    <div style="font-size:0.75rem;color:#64748b;margin-top:6px;">
+      ● A→B→Cの順にすべて移動<br>
+      ● 一度に1枚、上から順番に<br>
+      ● 大きい円盤は小さい上に置けない
+    </div>
+  `;
+  document.getElementById('hanoi-reset').onclick = () => {
+    const n = parseInt(document.getElementById('hanoi-disks').value);
+    drawHanoiScene(); initHanoi(n); renderHanoi();
+  };
+  document.getElementById('hanoi-disks').onchange = () => {
+    const n = parseInt(document.getElementById('hanoi-disks').value);
+    drawHanoiScene(); initHanoi(n); renderHanoi();
+  };
+  document.getElementById('hanoi-hint').onclick = () => {
+    if (!hanoiState) return;
+    const move = hanoiNextMove(hanoiState.pegs, hanoiState.totalDisks);
+    if (move) alert(`💡 ヒント: ${['A','B','C'][move.from]} → ${['A','B','C'][move.to]} （円盤${move.disk}）`);
+  };
+  scale = Math.min(window.innerWidth/LOGICAL_W, window.innerHeight/LOGICAL_H)*0.85;
+  translateX = (window.innerWidth-LOGICAL_W*scale)/2;
+  translateY = (window.innerHeight-LOGICAL_H*scale)/2;
+  applyTransform();
+}
+
+// Hanoi solver for hint
+function hanoiSolve(n, from, to, via, moves) {
+  if (n===0) return;
+  hanoiSolve(n-1, from, via, to, moves);
+  moves.push({disk:n, from, to});
+  hanoiSolve(n-1, via, to, from, moves);
+}
+function hanoiNextMove(pegs, total) {
+  // find current state and solve from scratch, return next legal move
+  const allMoves = [];
+  hanoiSolve(total, 0, 2, 1, allMoves);
+  // simulate from initial state to current, then return next
+  const sim = [[], [], []];
+  for(let i=total;i>=1;i--) sim[0].push(i);
+  for (const mv of allMoves) {
+    const disk = sim[mv.from].at(-1);
+    if (disk === undefined) continue;
+    // check if current state matches sim state at pegs
+    const match = pegs.every((p,pi)=>JSON.stringify(p)===JSON.stringify(sim[pi]));
+    if (match) return {disk, from:mv.from, to:mv.to};
+    sim[mv.to].push(sim[mv.from].pop());
+  }
+  return null;
+}
+
+// ============================================================
+//  MODE: CARDS
+// ============================================================
+const SUITS = ['♠','♥','♦','♣'];
+const RANKS = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+let cardDeck = [];
+
+function makeCardLabel(suit, rank) { return `${suit}\n${rank}`; }
+function isRedSuit(suit) { return suit==='♥'||suit==='♦'; }
+
+function setupCards() {
+  initCanvasBg('#076324');
+  // green felt texture
+  ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+  for(let i=0;i<50;i++){
+    ctx.beginPath(); 
+    ctx.moveTo(Math.random()*LOGICAL_W, 0);
+    ctx.lineTo(Math.random()*LOGICAL_W, LOGICAL_H);
+    ctx.stroke();
+  }
+  gamePanel.style.display='block';
+  gpTitle.textContent='🃏 トランプ';
+  gpContent.innerHTML=`
+    <button class="gp-btn" id="card-deal-all">📤 全配置（裏向き）</button>
+    <button class="gp-btn" id="card-deal-hand">🤚 5枚を表向きで</button>
+    <button class="gp-btn" id="card-shuffle">🔀 シャッフル</button>
+    <button class="gp-btn" id="card-flip-all">🔄 全て表/裏切替</button>
+    <button class="gp-btn" id="card-clear">🗑️ 全消去</button>
+    <div style="font-size:0.75rem;color:#64748b;margin-top:6px;">
+      ● ダブルクリックで表/裏切替<br>
+      ● ドラッグで移動<br>
+      ● 複製ボックスでコピー
+    </div>
+  `;
+  cardDeck = [];
+  SUITS.forEach(s=>RANKS.forEach(r=>cardDeck.push({suit:s,rank:r})));
+  shuffleDeck();
+  
+  document.getElementById('card-deal-all').onclick = dealAllCards;
+  document.getElementById('card-deal-hand').onclick = dealHand;
+  document.getElementById('card-shuffle').onclick = () => { cleanupMarkers(); shuffleDeck(); dealHand(); };
+  document.getElementById('card-flip-all').onclick = flipAllCards;
+  document.getElementById('card-clear').onclick = cleanupMarkers;
+
+  // double-click on card: flip
+  boardContainer.addEventListener('dblclick', cardFlipHandler);
+
+  scale = Math.min(window.innerWidth/LOGICAL_W, window.innerHeight/LOGICAL_H)*0.88;
+  translateX = (window.innerWidth-LOGICAL_W*scale)/2;
+  translateY = (window.innerHeight-LOGICAL_H*scale)/2;
+  applyTransform();
+}
+
+function shuffleDeck() {
+  for(let i=cardDeck.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [cardDeck[i],cardDeck[j]]=[cardDeck[j],cardDeck[i]];
+  }
+}
+
+function dealAllCards() {
+  cleanupMarkers();
+  const cols=13, rows=4;
+  cardDeck.forEach(({suit,rank},i)=>{
+    const col=i%cols, row=Math.floor(i/cols);
+    const lx=80+col*130, ly=80+row*160;
+    const m=addMarker('', lx, ly, {
+      cls:'card-marker'+(isRedSuit(suit)?' red':''),
+      color:'white', id:'card'+i,
+      extra:{suit,rank,facedown:'true'}
+    });
+    m.classList.add('card-marker','face-down');
+    if(isRedSuit(suit)) m.classList.add('red');
+  });
+}
+
+function dealHand() {
+  cleanupMarkers();
+  const hand = cardDeck.slice(0,5);
+  hand.forEach(({suit,rank},i)=>{
+    const lx=300+i*240, ly=450;
+    const m=addMarker(makeCardLabel(suit,rank), lx, ly, {
+      cls:'card-marker'+(isRedSuit(suit)?' red':''),
+      color:'white', id:'hand'+i,
+      extra:{suit,rank,facedown:'false'}
+    });
+    m.classList.add('card-marker');
+    if(isRedSuit(suit)) m.classList.add('red');
+  });
+}
+
+function cardFlipHandler(e) {
+  const m = e.target.closest('.card-marker');
+  if (!m) return;
+  const facedown = m.getAttribute('data-facedown')==='true';
+  const suit = m.getAttribute('data-suit');
+  const rank = m.getAttribute('data-rank');
+  if (facedown) {
+    m.classList.remove('face-down');
+    m.textContent = makeCardLabel(suit,rank);
+    m.setAttribute('data-facedown','false');
+  } else {
+    m.classList.add('face-down');
+    m.textContent='';
+    m.setAttribute('data-facedown','true');
+  }
+}
+
+function flipAllCards() {
+  boardContainer.querySelectorAll('.card-marker').forEach(m=>{
+    const facedown = m.getAttribute('data-facedown')==='true';
+    const suit=m.getAttribute('data-suit'), rank=m.getAttribute('data-rank');
+    if(facedown){
+      m.classList.remove('face-down'); m.textContent=makeCardLabel(suit,rank); m.setAttribute('data-facedown','false');
+    } else {
+      m.classList.add('face-down'); m.textContent=''; m.setAttribute('data-facedown','true');
+    }
+  });
+}
+
+// cleanup card listener when switching modes  
+const _origCleanup = cleanupMode;
+</script>
 </body>
 </html>
